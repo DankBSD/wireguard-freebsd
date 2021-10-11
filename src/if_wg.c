@@ -3014,8 +3014,11 @@ wg_module_init(void)
 	if ((wg_packet_zone = uma_zcreate("wg packet", sizeof(struct wg_packet),
 	     NULL, NULL, NULL, NULL, 0, 0)) == NULL)
 		goto free_none;
-	if (cookie_init() != 0)
+	ret = crypto_init();
+	if (ret != 0)
 		goto free_zone;
+	if (cookie_init() != 0)
+		goto free_crypto;
 
 	wg_osd_jail_slot = osd_jail_register(NULL, methods);
 
@@ -3028,6 +3031,8 @@ wg_module_init(void)
 free_all:
 	osd_jail_deregister(wg_osd_jail_slot);
 	cookie_deinit();
+free_crypto:
+	crypto_deinit();
 free_zone:
 	uma_zdestroy(wg_packet_zone);
 free_none:
@@ -3051,6 +3056,7 @@ wg_module_deinit(void)
 	MPASS(LIST_EMPTY(&wg_list));
 	osd_jail_deregister(wg_osd_jail_slot);
 	cookie_deinit();
+	crypto_deinit();
 	uma_zdestroy(wg_packet_zone);
 }
 
