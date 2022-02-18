@@ -291,6 +291,24 @@ static volatile unsigned long peer_counter = 0;
 static const char wgname[] = "wg";
 static unsigned wg_osd_jail_slot;
 
+static SYSCTL_NODE(_hw, OID_AUTO, wg, CTLFLAG_RD, NULL, "wg(4) counters");
+
+static COUNTER_U64_DEFINE_EARLY(wg_decrypt_empty);
+SYSCTL_COUNTER_U64(_hw_wg, OID_AUTO, decrypt_empty, CTLFLAG_RD,
+    &wg_decrypt_empty, "Number of decrypt tasks with no work");
+
+static COUNTER_U64_DEFINE_EARLY(wg_decrypt_work);
+SYSCTL_COUNTER_U64(_hw_wg, OID_AUTO, decrypt_work, CTLFLAG_RD,
+    &wg_decrypt_work, "Number of decrypt tasks with no work");
+
+static COUNTER_U64_DEFINE_EARLY(wg_encrypt_empty);
+SYSCTL_COUNTER_U64(_hw_wg, OID_AUTO, encrypt_empty, CTLFLAG_RD,
+    &wg_encrypt_empty, "Number of encrypt tasks with no work");
+
+static COUNTER_U64_DEFINE_EARLY(wg_encrypt_work);
+SYSCTL_COUNTER_U64(_hw_wg, OID_AUTO, encrypt_work, CTLFLAG_RD,
+    &wg_encrypt_work, "Number of encrypt tasks with no work");
+
 static struct sx wg_sx;
 SX_SYSINIT(wg_sx, &wg_sx, "wg_sx");
 
@@ -1607,16 +1625,32 @@ static void
 wg_softc_decrypt(struct wg_softc *sc)
 {
 	struct wg_packet *pkt;
-	while ((pkt = wg_queue_dequeue_parallel(&sc->sc_decrypt_parallel)) != NULL)
+	bool empty = true;
+
+	while ((pkt = wg_queue_dequeue_parallel(&sc->sc_decrypt_parallel)) != NULL) {
 		wg_decrypt(sc, pkt);
+		empty = false;
+	}
+	if (empty)
+		counter_u64_add(wg_decrypt_empty, 1);
+	else
+		counter_u64_add(wg_decrypt_work, 1);
 }
 
 static void
 wg_softc_encrypt(struct wg_softc *sc)
 {
 	struct wg_packet *pkt;
-	while ((pkt = wg_queue_dequeue_parallel(&sc->sc_encrypt_parallel)) != NULL)
+	bool empty = true;
+
+	while ((pkt = wg_queue_dequeue_parallel(&sc->sc_encrypt_parallel)) != NULL) {
 		wg_encrypt(sc, pkt);
+		empty = false;
+	}
+	if (empty)
+		counter_u64_add(wg_encrypt_empty, 1);
+	else
+		counter_u64_add(wg_encrypt_work, 1);
 }
 
 static void
